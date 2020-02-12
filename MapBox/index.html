@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset='utf-8' />
+    <title></title>
+    <meta name='viewport' content='initial-scale=1,maximum-scale=1,user-scalable=no' />
+    <link href="https://fonts.googleapis.com/css?family=Open+Sans" rel="stylesheet">
+    <script src='https://api.tiles.mapbox.com/mapbox-gl-js/v1.6.1/mapbox-gl.js'></script>
+    <link href='https://api.tiles.mapbox.com/mapbox-gl-js/v1.6.1/mapbox-gl.css' rel='stylesheet' />
+    <style>
+    body {
+        margin: 0;
+        padding: 0;
+      }
+
+    #map {
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        width: 100%;
+      }
+      
+    .marker {
+	  background-image: url('mapbox-icon.png');
+	  background-size: cover;
+	  width: 50px;
+	  height: 50px;
+	  border-radius: 50%;
+	  cursor: pointer;
+	}
+	
+	.mapboxgl-popup {
+	  max-width: 200px;
+	}
+
+	.mapboxgl-popup-content {
+	  text-align: center;
+	  font-family: 'Open Sans', sans-serif;
+	}
+	
+	#overlay {
+	  font-family: 'Open Sans', sans-serif;
+	  position: absolute;
+	  margin: 10px;
+	  border-radius: 4px;
+	  padding: 10px;
+	  width: 200px;
+	  top: 0;
+	  left: 0;
+	  background-color: white;
+	  box-shadow: 0 0 10px 2px rgba(0,0,0,.1);
+	}
+	
+	#overlay p {
+		padding: 0;
+		margin: 0;
+	}
+	
+	#toggle {
+		margin: 5px 0;
+		border-radius: 4px;
+		color: white;
+		background-color: dodgerblue;
+		border: 0;
+		padding: 5px;
+	}
+    </style>
+</head>
+<body>
+  <script src="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.4.2/mapbox-gl-geocoder.min.js"></script>
+  <link rel="stylesheet" href="https://api.mapbox.com/mapbox-gl-js/plugins/mapbox-gl-geocoder/v4.4.2/mapbox-gl-geocoder.css" type="text/css" />
+  <script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/es6-promise@4/dist/es6-promise.auto.min.js"></script>
+  <div id='map'></div>
+  <div id='overlay'>
+	<p>Overlay</p>
+	<input type=button value="Add Markers" onclick="toggle()" id="toggle"/>
+  </div>
+<script>
+
+import rospy;
+
+mapboxgl.accessToken = 'pk.eyJ1IjoiZWxsZW54d2NoZW4iLCJhIjoiY2szbHZlc2RiMDJiejNmcWVteGx3aHNjcSJ9.KTf1PHkOPk_pXswRLLu8YA';
+
+var map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/light-v10', // style: 'mapbox://styles/mapbox/satellite-v9'for satellite
+  center:[-79.4512, 43.6568],
+  zoom: 3
+});
+
+var place = false;
+
+var geojson = {
+  type: 'FeatureCollection',
+  features: [{
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: [-77.032, 38.913]
+    },
+    properties: {
+      title: 'Mapbox',
+      description: 'Washington, D.C.'
+    }
+  },
+  {
+    type: 'Feature',
+    geometry: {
+      type: 'Point',
+      coordinates: [-122.414, 37.776]
+    },
+    properties: {
+      title: 'Mapbox',
+      description: 'San Francisco, California'
+    }
+  }]
+};
+
+//Count number of predefined markers
+const staticMarkers = geojson.features.length;
+
+//Toggles place variable
+function toggle() {
+  if (place) {
+	place = false;
+	document.getElementById("toggle").value = "Add Markers";
+  } else {
+	place = true;
+	document.getElementById("toggle").value = "Stop Adding Markers";
+  }
+}
+
+map.on('click', function(e){
+	//checks if place is true
+	if (place) {
+		//Insert new marker into geojson.features array
+		var number = geojson.features.push({
+			type: 'Feature',
+			geometry: {
+				type: 'Point',
+				coordinates: [e.lngLat.lng, e.lngLat.lat]
+			},
+			properties: {
+				title: 'New Marker',
+				description: e.lngLat.lng + ', ' + e.lngLat.lat
+			}
+		})
+		
+		var marker = geojson.features[number-1];
+		var el = document.createElement('div');
+		el.className = 'marker';
+		//set id of marker to concatenation of coords
+		el.id = e.lngLat.lng + '|' + e.lngLat.lat;
+
+		// make a marker for new marker and add to the map
+		new mapboxgl.Marker(el)
+			.setLngLat(marker.geometry.coordinates)
+			.setPopup(new mapboxgl.Popup({ offset: 25 }) // add popups
+			.setHTML('<h3>' + marker.properties.title + 
+					'</h3><p>' + marker.properties.description + '</p>' +
+					'<input type="button" value="Delete" onclick="remove(' + '\'' + e.lngLat.lng + '|' + e.lngLat.lat + '\')"/>'))
+			.addTo(map);
+		
+		//Check for size of array
+		if (number > staticMarkers + 5) {
+			//Remove 3rd element (first 2 are static)
+			var coords = geojson.features[staticMarkers].geometry.coordinates;
+			remove(coords[0] + '|' + coords[1]);
+		}
+	}
+});
+
+function remove(id) {
+	//grab coords from id
+	var coords = id.split('|');
+
+	//convert coords from strings to floats
+	coords[0] = parseFloat(coords[0]);
+	coords[1] = parseFloat(coords[1]);
+
+	//loop through geojson.features array and remove matching marker
+	for (var i=0; i < geojson.features.length; i++) {
+		if (geojson.features[i].geometry.coordinates[0] == coords[0]) {
+			geojson.features.splice(i, 1);
+			break
+		}
+	}
+
+	console.log(geojson.features);
+	//remove marker element from page
+	document.getElementById(id).remove();
+}
+
+// add markers to map
+geojson.features.forEach(function(marker) {
+
+  // create a HTML element for each feature
+  var el = document.createElement('div');
+  el.className = 'marker';
+
+  // make a marker for each feature and add to the map
+  new mapboxgl.Marker(el)
+    .setLngLat(marker.geometry.coordinates)
+    .setPopup(new mapboxgl.Popup({ offset: 25 }) // add popups
+    .setHTML('<h3>' + marker.properties.title + '</h3><p>' + marker.properties.description + '</p>'))
+    .addTo(map);
+});
+
+
+map.addControl(
+	new MapboxGeocoder({
+	accessToken: mapboxgl.accessToken,
+	mapboxgl: mapboxgl
+	})
+);
+	
+map.addControl(
+	new mapboxgl.NavigationControl()
+);
+
+map.addControl(
+	new mapboxgl.GeolocateControl({
+	positionOptions: {
+	enableHighAccuracy: true
+	},
+	trackUserLocation: true
+	})
+);
+
+</script>
+
+</body>
+</html>
